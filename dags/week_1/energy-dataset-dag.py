@@ -1,8 +1,12 @@
 from datetime import datetime
 from typing import List
+from zipfile import ZipFile
 
 import pandas as pd
+import os
+from pathlib import Path
 from airflow.decorators import dag, task # DAG and task decorators for interfacing with the TaskFlow API
+from airflow.providers.google.cloud.hooks.gcs import GCSHook
 
 @dag(
     # This defines how often your DAG will run, or the schedule by which your DAG runs. In this case, this DAG
@@ -36,7 +40,30 @@ def energy_dataset_dag():
         building a list of dataframes that is returned.
 
         """
-        from zipfile import ZipFile
+        
+        unzip_destination = "data/unzipped/"
+        path_exists = os.path.exists(unzip_destination)
+
+        try:
+            if path_exists is True:
+                print(f"Staging Destination Path {unzip_destination} already exists..Proceeding to Unzip file")
+            else:
+                    print(f"Creating Staging Path {unzip_destination}")
+                    Path(unzip_destination).mkdir(parents=True)
+            # Proceed To Unzip File
+            unzipper = ZipFile("data/energy-consumption-generation-prices-and-weather.zip","r")        
+            unzipper.extractall(unzip_destination)
+            print("Files Extracted Succesfully.")
+        except Exception as e:
+            print(f"ERROR During Extraction -> {e}")
+            raise e
+        try:
+            unzipped_files = [pd.read_csv(f"{unzip_destination}{file}") for file in os.listdir(unzip_destination)]
+            print(f"`{len(unzipped_files)}` Files parsed to dataframe succefully.")
+        except Exception as e:
+            print(f"ERROR during DataFrame parsing -> {e}")
+        
+        return unzipped_files
         # TODO Unzip files into pandas dataframes
 
 
@@ -48,8 +75,6 @@ def energy_dataset_dag():
         schema, and then writes the data into GCS as parquet files.
         """
 
-        from airflow.providers.google.cloud.hooks.gcs import GCSHook
-
         data_types = ['generation', 'weather']
 
         # GCSHook uses google_cloud_default connection by default, so we can easily create a GCS client using it
@@ -58,11 +83,22 @@ def energy_dataset_dag():
         # The google cloud storage github repo has a helpful example for writing from pandas to GCS:
         # https://github.com/googleapis/python-storage/blob/main/samples/snippets/storage_fileio_pandas.py
         
-        client = GCSHook()     \
-        # TODO Add GCS upload code
+        client = GCSHook()
+        bucket = client.get_bucket("corise-airflow")
+        
+        for blob_name, result in zip(data_types, unzip_result):
+            print(f"`{blob_name}` object schema is \n")
+            print(result.info())
+            # Persist Object in GCS 
+            blob = bucket.blob(blob_name)
+            with blob.open("w") as file_writer:
+                file_writer.write(result.to_parquet(index=False))
+                print(f"`{blob_name}` data successfully written to GCS Bucket `{bucket.name}`")
 
 
     # TODO Add task linking logic here
+
+    load(extract())
 
 
 energy_dataset_dag = energy_dataset_dag()
