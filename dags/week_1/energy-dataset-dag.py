@@ -19,7 +19,8 @@ from airflow.providers.google.cloud.hooks.gcs import GCSHook
     catchup=False,
     default_args={
         "retries": 2, # If a task fails, it will retry 2 times.
-        "retry_delay":timedelta(seconds=60)
+        "retry_delay":timedelta(seconds=60),
+        "owner":"Victor.I"
     },
     tags=['example']) # If set, this tag is shown in the DAG view of the Airflow UI
 def energy_dataset_dag():
