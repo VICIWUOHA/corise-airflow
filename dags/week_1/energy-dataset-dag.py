@@ -1,10 +1,8 @@
-from datetime import datetime
+from datetime import datetime,timedelta
 from typing import List
 from zipfile import ZipFile
 
 import pandas as pd
-import os
-from pathlib import Path
 from airflow.decorators import dag, task # DAG and task decorators for interfacing with the TaskFlow API
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 
@@ -21,6 +19,7 @@ from airflow.providers.google.cloud.hooks.gcs import GCSHook
     catchup=False,
     default_args={
         "retries": 2, # If a task fails, it will retry 2 times.
+        "retry_delay":timedelta(seconds=60)
     },
     tags=['example']) # If set, this tag is shown in the DAG view of the Airflow UI
 def energy_dataset_dag():
@@ -40,31 +39,14 @@ def energy_dataset_dag():
         building a list of dataframes that is returned.
 
         """
-        
-        unzip_destination = "data/unzipped/"
-        path_exists = os.path.exists(unzip_destination)
-
         try:
-            if path_exists is True:
-                print(f"Staging Destination Path {unzip_destination} already exists..Proceeding to Unzip file")
-            else:
-                    print(f"Creating Staging Path {unzip_destination}")
-                    Path(unzip_destination).mkdir(parents=True)
-            # Proceed To Unzip File
-            unzipper = ZipFile("data/energy-consumption-generation-prices-and-weather.zip","r")        
-            unzipper.extractall(unzip_destination)
-            print("Files Extracted Succesfully.")
+            zipped_items = ZipFile("dags/data/energy-consumption-generation-prices-and-weather.zip","r")      
+            unzipped_files = [pd.read_csv(zipped_items.open(file_name)) for file_name in zipped_items.namelist()]
+            print(f"`{len(unzipped_files)}` Files parsed to dataframes succesfully.")
         except Exception as e:
-            print(f"ERROR During Extraction -> {e}")
-            raise e
-        try:
-            unzipped_files = [pd.read_csv(f"{unzip_destination}{file}") for file in os.listdir(unzip_destination)]
-            print(f"`{len(unzipped_files)}` Files parsed to dataframe succefully.")
-        except Exception as e:
-            print(f"ERROR during DataFrame parsing -> {e}")
+            print(f"ERROR during file extraction or parsing -> {e}")
         
         return unzipped_files
-        # TODO Unzip files into pandas dataframes
 
 
     @task
@@ -82,23 +64,21 @@ def energy_dataset_dag():
 
         # The google cloud storage github repo has a helpful example for writing from pandas to GCS:
         # https://github.com/googleapis/python-storage/blob/main/samples/snippets/storage_fileio_pandas.py
-        
+        # from airflow.providers.google.cloud.hooks.gcs import GCSHook
+
         client = GCSHook()
-        bucket = client.get_bucket("corise-airflow")
+        bucket = "corise-airflow-victor"
         
         for blob_name, result in zip(data_types, unzip_result):
             print(f"`{blob_name}` object schema is \n")
             print(result.info())
-            # Persist Object in GCS 
-            blob = bucket.blob(blob_name)
-            with blob.open("w") as file_writer:
-                file_writer.write(result.to_parquet(index=False))
-                print(f"`{blob_name}` data successfully written to GCS Bucket `{bucket.name}`")
+            # Persist Object in GCS
 
-
-    # TODO Add task linking logic here
+            client.upload(bucket_name=bucket,
+                          object_name =blob_name,
+                          data = result.to_parquet())
+            print(f"`{blob_name}` data successfully written to GCS Bucket `{bucket}`")
 
     load(extract())
-
 
 energy_dataset_dag = energy_dataset_dag()
