@@ -14,6 +14,48 @@ DATASET_NORM_WRITE_BUCKET = "corise-airflow-victor"
 TRAINING_DATA_PATH = "week-2/price_prediction_training_data.csv"
 VAL_END_INDEX = 31056
 
+DATA_TYPES = ["generation", "weather"]
+
+normalized_columns = {
+    "generation": {
+        "time": "time",
+        "columns": [
+            "total_load_actual",
+            "price_day_ahead",
+            "price_actual",
+            "generation_fossil_hard_coal",
+            "generation_fossil_gas",
+            "generation_fossil_brown_coal_lignite",
+            "generation_fossil_oil",
+            "generation_other_renewable",
+            "generation_waste",
+            "generation_biomass",
+            "generation_other",
+            "generation_solar",
+            "generation_hydro_water_reservoir",
+            "generation_nuclear",
+            "generation_hydro_run_of_river_and_poundage",
+            "generation_wind_onshore",
+            "generation_hydro_pumped_storage_consumption",
+        ],
+    },
+    "weather": {
+        "time": "dt_iso",
+        "columns": [
+            "city_name",
+            "temp",
+            "pressure",
+            "humidity",
+            "wind_speed",
+            "wind_deg",
+            "rain_1h",
+            "rain_3h",
+            "snow_3h",
+            "clouds_all",
+        ],
+    },
+}
+
 
 def data_unzipper(file_path: str) -> Dict[str, pd.DataFrame]:
     """
@@ -409,3 +451,42 @@ def join_and_transform_datasets(
         df_final = df_final.drop(["rain_3h_{}".format(city)], axis=1)
 
     return df_final
+
+
+# WEEK 3 ARTIFACTS
+
+PROJECT_ID = "corise-airflow"
+DESTINATION_BUCKET = "corise-airflow-victor"
+BQ_DATASET_NAME = "timeseries_energy"
+
+
+def extract_data(file_path: str) -> List[pd.DataFrame]:
+    """
+    Basic Function to extract dataframes from zip file
+
+    """
+    datasets = [
+        pd.read_csv(ZipFile(file_path).open(file))
+        for file in ZipFile(file_path).namelist()
+    ]
+    return datasets
+
+
+def produce_select_statement(dataset_name, table_name) -> str:
+    """
+    This Function generates a select statement for a specified dataset table
+    time columns are casted as TIMESTAMPS here and all other columns in normalized_columns are selected
+
+    Returns
+    ------
+    `str`: A sql query string
+    """
+
+    timestamp_col = normalized_columns[table_name].get("time")
+    columns = normalized_columns[table_name].get("columns")
+
+    query = f"""SELECT CAST({timestamp_col} AS TIMESTAMP) AS {table_name}_time,
+                {",".join(col_name for col_name in columns)} FROM {dataset_name}.{table_name}
+               """
+
+    return query
