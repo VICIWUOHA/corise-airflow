@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime,timedelta
 import pandas as pd
 from typing import List
 from airflow.operators.empty import EmptyOperator
@@ -33,12 +33,18 @@ doc_md = """
     - 5. Builds a joined view on top of the normalized views, joined on time
     """
 
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(seconds=60),
+    "owner": "Victor.I",
+}
 
 @dag(
-    schedule_interval=None,
+    schedule_interval="@daily",
     start_date=datetime(2021, 1, 1),
     catchup=False,
     doc_md=doc_md,
+    default_args = DEFAULT_ARGS
 )
 def data_warehouse_transform_dag():
     @task
