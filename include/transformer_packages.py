@@ -6,6 +6,7 @@ from typing import List, Tuple, Dict
 from zipfile import ZipFile
 import xgboost as xgb
 import pandas as pd
+from datetime import timedelta
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 
@@ -457,7 +458,7 @@ def join_and_transform_datasets(
 
 PROJECT_ID = "corise-airflow"
 DESTINATION_BUCKET = "corise-airflow-victor"
-BQ_DATASET_NAME = "timeseries_energy"
+# BQ_DATASET_NAME = "timeseries_energy"
 
 
 def extract_data(file_path: str) -> List[pd.DataFrame]:
@@ -490,3 +491,21 @@ def produce_select_statement(dataset_name, table_name) -> str:
                """
 
     return query
+
+
+# Week 4 Artifacts
+
+BQ_DATASET_NAME = "timeseries_energy_victor"
+
+time_columns = {"generation": "time", "weather": "dt_iso"}
+
+filepaths = {
+    "generation": f"gs://{DESTINATION_BUCKET}/week-3/generation.parquet",
+    "weather": f"gs://{DESTINATION_BUCKET}/week-3/weather.parquet",
+}
+
+DEFAULT_ARGS = {
+    "retries": 2,
+    "retry_delay": timedelta(seconds=60),
+    "owner": "Victor.I",
+}
